@@ -1,0 +1,74 @@
+pipeline {
+    agent any
+
+    environment {
+        REPO_URL = 'https://github.com/ChibuzoNE/NumberGuessGame.git'
+        BRANCH_NAME = 'main'
+    }
+
+    stages {
+        stage('Clone Repository') {
+            steps {
+                script {
+                    // Ensure your Jenkins credentialsId is set up properly
+                    git url: REPO_URL, credentialsId: 'your-credentials-id', branch: BRANCH_NAME
+                }
+            }
+        }
+
+        stage('Check Disk Space') {
+            steps {
+                script {
+                    sh 'df -h'  // Check available disk space
+                }
+            }
+        }
+
+        stage('Fix Permissions') {
+            steps {
+                script {
+                    sh 'sudo chown -R jenkins:jenkins $WORKSPACE || true'  // Change ownership
+                    sh 'sudo chmod -R 777 $WORKSPACE || true'  // Full permissions (be careful with this)
+                }
+            }
+        }
+
+        stage('Clean Workspace') {
+            steps {
+                script {
+                    sh 'rm -rf target'  // Remove old build files
+                    sh 'rm -rf ~/.m2/repository/com/studentapp'  // Optional cleanup
+                }
+            }
+        }
+
+        stage('Build with Maven') {
+            steps {
+                script {
+                    sh 'mvn clean compile package -X'  // Debug-level Maven build
+                }
+            }
+        }
+
+        stage('Install with Maven') {
+            steps {
+                script {
+                    sh 'mvn clean install'  // Install the project with Maven
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            script {
+                sh 'echo "Build failed. Check logs for details."'  
+            }
+        }
+        success {
+            script {
+                sh 'echo "Build successful!"'  
+            }
+        }
+    }
+}
