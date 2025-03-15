@@ -11,7 +11,7 @@ pipeline {
             steps {
                 script {
                     // Ensure your Jenkins credentialsId is set up properly
-                    git url: https://github.com/ChibuzoNE/NumberGuessGame.git, credentialsId: 'your-credentials-id', branch: BRANCH_NAME
+                    git url: https://github.com/ChibuzoNE/NumberGuessGame.git, credentialsId: '7137798b-e37b-482a-a5a7-1369e4d05433', branch: main
                 }
             }
         }
