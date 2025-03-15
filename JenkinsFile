@@ -2,73 +2,96 @@ pipeline {
     agent any
 
     environment {
-        REPO_URL = 'https://github.com/ChibuzoNE/NumberGuessGame.git'
-        BRANCH_NAME = 'main'
+        JAVA_HOME = "/usr/lib/jvm/java-17-amazon-corretto.x86_64" 
+        TOMCAT_HOME = "/home/ec2-user/apache-tomcat-7.0.94"  
+        WAR_FILE = "NumberGuessGame-1.0-SNAPSHOT.war"
+        DEPLOY_DIR = "$TOMCAT_HOME/webapps"
+        PUBLIC_IP = "3.15.168.47"
+        TOMCAT_PORT = "8081"
     }
 
     stages {
         stage('Clone Repository') {
             steps {
-                script {
-                    // Ensure your Jenkins credentialsId is set up properly
-                    git url: https://github.com/ChibuzoNE/NumberGuessGame.git, credentialsId: '7137798b-e37b-482a-a5a7-1369e4d05433', branch: main
-                }
+                git url: 'https://github.com/ChibuzoNE/guessgame.git', branch: 'main'
             }
         }
 
         stage('Check Disk Space') {
             steps {
-                script {
-                    sh 'df -h'  // Check available disk space
-                }
-            }
-        }
-
-        stage('Fix Permissions') {
-            steps {
-                script {
-                    sh 'sudo chown -R jenkins:jenkins $WORKSPACE || true'  // Change ownership
-                    sh 'sudo chmod -R 777 $WORKSPACE || true'  // Full permissions (be careful with this)
-                }
-            }
-        }
-
-        stage('Clean Workspace') {
-            steps {
-                script {
-                    sh 'rm -rf target'  // Remove old build files
-                    sh 'rm -rf ~/.m2/repository/com/studentapp'  // Optional cleanup
-                }
+                sh 'df -h'
             }
         }
 
         stage('Build with Maven') {
             steps {
                 script {
-                    sh 'mvn clean compile package -X'  // Debug-level Maven build
+                    echo "Building project with Maven using Java 17..."
+                    sh 'mvn clean package'  // Assuming mvn is in the system PATH
                 }
             }
         }
 
-        stage('Install with Maven') {
+        stage('Check WAR File') {
             steps {
                 script {
-                    sh 'mvn clean install'  // Install the project with Maven
+                    if (!fileExists("target/$WAR_FILE")) {
+                        error "❌ WAR file not found! Build may have failed."
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Tomcat') {
+            steps {
+                script {
+                    sh """
+                    echo "Stopping Tomcat if running..."
+                    if pgrep -f 'org.apache.catalina.startup.Bootstrap'; then
+                        sudo $TOMCAT_HOME/bin/shutdown.sh || true
+                        sleep 10
+                    else
+                        echo "Tomcat is not running."
+                    fi
+
+                    echo "Ensuring correct ownership for webapps..."
+                    sudo chown -R jenkins:jenkins $DEPLOY_DIR
+                    sudo chmod -R 755 $DEPLOY_DIR
+
+                    echo "Removing old deployment..."
+                    sudo rm -rf $DEPLOY_DIR/NumberGuessGame-1.0-SNAPSHOT*
+                    sudo rm -f $DEPLOY_DIR/$WAR_FILE
+
+                    echo "Deploying new WAR file..."
+                    cp target/$WAR_FILE $DEPLOY_DIR/
+
+                    echo "Starting Tomcat..."
+                    sudo $TOMCAT_HOME/bin/startup.sh
+                    sleep 20  # Adjusted sleep time to wait for Tomcat to start
+                    """
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                script {
+                    echo "Checking if Tomcat is running..."
+                    sh "ps aux | grep '[o]rg.apache.catalina.startup.Bootstrap'"
+
+                    echo "Checking deployment at http://$PUBLIC_IP:$TOMCAT_PORT/NumberGuessGame-1.0-SNAPSHOT/"
+                    sh "curl -I http://$PUBLIC_IP:$TOMCAT_PORT/NumberGuessGame-1.0-SNAPSHOT/ || exit 1"
                 }
             }
         }
     }
 
     post {
-        failure {
-            script {
-                sh 'echo "Build failed. Check logs for details."'  
-            }
-        }
         success {
-            script {
-                sh 'echo "Build successful!"'  
-            }
+            echo "✅ Deployment to Tomcat was successful!"
+        }
+        failure {
+            echo "❌ Deployment to Tomcat failed. Check logs."
         }
     }
 }
